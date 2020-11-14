@@ -137,7 +137,7 @@ def profile_follow(request, username):
     viewer = request.user
     author = get_object_or_404(User, username=username)
 
-    if viewer == author or viewer.follower.filter(author=author):
+    if viewer == author or viewer.follower.filter(author=author).exists():
         return redirect('profile', username=username)
 
     Follow.objects.create(user=viewer, author=author)
@@ -149,7 +149,7 @@ def profile_unfollow(request, username):
     viewer = request.user
     author = get_object_or_404(User, username=username)
 
-    if viewer == author or not viewer.follower.filter(author=author):
+    if viewer == author or not viewer.follower.filter(author=author).exists():
         return redirect('profile', username=username)
 
     on_delete = Follow.objects.get(user=viewer, author=author)

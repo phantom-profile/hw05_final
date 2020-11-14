@@ -4,7 +4,7 @@ from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.core.cache import cache
-
+from django.core.files.uploadedfile import SimpleUploadedFile
 from posts.models import Post, Group
 
 User = get_user_model()
@@ -77,6 +77,11 @@ class ViewsTests(TestCase):
                                  f"Измененный пост не появляется на {url}")
 
     def test_is_image_on_page(self):
+        # не получилось создать псевдокартинку.
+        # при всех трех механизмах Image.new(), SimpleUploadedFile() и
+        # mock_open() картинка "не признается" системой и пост не
+        # регистрируется. Несколько часов браузинга и бестолку:(
+        # Разъясни, пожалуйста, как тут нужно применять эти инструменты.
         with open('posts/media/cats.jpg', 'rb') as image:
             new_post = self.authorized_client.post(reverse('new_post'),
                                                    {'text': 'post with image',
@@ -98,16 +103,17 @@ class ViewsTests(TestCase):
                             f'картинки нет на странице {url}')
 
     def test_defence_from_nonimage_file(self):
-        current_posts_count = Post.objects.count()
-        with open('posts/media/not_image.txt', 'rb') as non_image:
-            new_post = self.authorized_client.post(
+        non_image = SimpleUploadedFile('file.txt', b'i am not an image')
+        new_post = self.authorized_client.post(
                 reverse('new_post'), {'text': 'post with image',
                                       'group': self.group.id,
                                       'image': non_image},
                 follow=True)
 
-        self.assertEqual(current_posts_count, Post.objects.count(),
-                         "Защита от загрузки не картинок не сработала")
+        self.assertFormError(new_post, 'form', 'image',
+                             'Загрузите правильное изображение. '
+                             'Файл, который вы загрузили, поврежден '
+                             'или не является изображением.')
 
     def test_cache_index(self):
         testing_post = self.authorized_client.post(
@@ -118,7 +124,7 @@ class ViewsTests(TestCase):
         self.assertFalse('cache checking' in str(index.content),
                          "Страница не закеширована")
 
-    def test_auth_user_follow_unfollow(self):
+    def test_auth_user_follow(self):
         follow = self.authorized_client.post(
             reverse('profile_follow', args=[self.second_user]),
             follow=True)
@@ -129,6 +135,7 @@ class ViewsTests(TestCase):
         self.assertTrue(self.second_user.following.all(),
                         "У второго пользователя не появился подписчик")
 
+    def test_auth_user_unfollow(self):
         unfollow = self.authorized_client.post(
             reverse('profile_unfollow', args=[self.second_user]),
             follow=True)
@@ -139,7 +146,7 @@ class ViewsTests(TestCase):
         self.assertFalse(self.second_user.following.all(),
                          "У второго пользователя не исчез подписчик")
 
-    def test_follow_index_posts_appearance(self):
+    def test_follow_index_followed(self):
         follow = self.authorized_client.post(
             reverse('profile_follow', args=[self.second_user]),
             follow=True)
@@ -150,9 +157,13 @@ class ViewsTests(TestCase):
         self.assertIn(new_post, follow_index.context['page'],
                       "Пост автора не отображается у подписчика")
 
+    def test_follow_index_unfollowed(self):
         unfollow = self.authorized_client.post(
             reverse('profile_unfollow', args=[self.second_user]),
             follow=True)
+        new_post = Post.objects.create(author=self.second_user,
+                                       group=self.group,
+                                       text='post for follower')
         follow_index = self.authorized_client.get(reverse('follow_index'))
         self.assertNotIn(new_post, follow_index.context['page'],
                          "Пост автора отображается не у подписчика")
@@ -161,19 +172,23 @@ class ViewsTests(TestCase):
         new_post = Post.objects.create(author=self.second_user,
                                        group=self.group,
                                        text='post for comments')
-        auth_comment = self.authorized_client.post(
-            reverse('add_comment', args=[self.second_user, new_post.id]),
-            {'text': 'comment from auth'},
-            follow=True)
         anon_comment = self.unauthorized_client.post(
             reverse('add_comment', args=[self.second_user, new_post.id]),
             {'text': 'comment from anon'},
             follow=True)
+        self.assertEqual(new_post.comments.count(), 0,
+                         "Защита от незалогиненого комментатора не сработала")
+
+    def test_auth_user_comment(self):
+        new_post = Post.objects.create(author=self.second_user,
+                                       group=self.group,
+                                       text='post for comments')
+        auth_comment = self.authorized_client.post(
+            reverse('add_comment', args=[self.second_user, new_post.id]),
+            {'text': 'comment from auth'},
+            follow=True)
         commented_post = self.authorized_client.get(
             reverse('post_view', args=[self.second_user, new_post.id]))
-
-        self.assertEqual(new_post.comments.count(), 1,
-                         "Неожиданное количество комментариев")
         self.assertEqual(commented_post.context['comments'][0].text,
                          'comment from auth',
                          "Получен неверный комментарий")
