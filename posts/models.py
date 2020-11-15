@@ -31,7 +31,7 @@ class Post(models.Model):
     image = models.ImageField(upload_to='posts/', blank=True, null=True)
 
     def __str__(self):
-        return f'{self.author} - {self.pub_date} - {self.group}'
+        return f'{self.author} - {self.pub_date} - {self.group} - {self.image}'
 
     class Meta:
 

@@ -77,18 +77,16 @@ class ViewsTests(TestCase):
                                  f"Измененный пост не появляется на {url}")
 
     def test_is_image_on_page(self):
-        # не получилось создать псевдокартинку.
-        # при всех трех механизмах Image.new(), SimpleUploadedFile() и
-        # mock_open() картинка "не признается" системой и пост не
-        # регистрируется. Несколько часов браузинга и бестолку:(
-        # Разъясни, пожалуйста, как тут нужно применять эти инструменты.
-        with open('posts/media/cats.jpg', 'rb') as image:
-            new_post = self.authorized_client.post(reverse('new_post'),
-                                                   {'text': 'post with image',
-                                                    'group': self.group.id,
-                                                    'image': image},
-                                                   follow=True)
-        new_post = Post.objects.first()
+        image = SimpleUploadedFile('image.jpg',
+                                   b'/9j/4AAQSkZJRgABAQAAYABgAAD/4QCMRXhpZ',
+                                   content_type='image/jpg'
+                                   )
+
+        new_post = Post.objects.create(author=self.user,
+                                       group=self.group,
+                                       text='test text 3',
+                                       image=image)
+
         cache.clear()
         tested_urls = [
             reverse('index'),
@@ -96,7 +94,6 @@ class ViewsTests(TestCase):
             reverse('post_view', args=[self.user, new_post.id]),
             reverse('group_posts', args=[new_post.group.slug]),
         ]
-
         for url in tested_urls:
             response = self.authorized_client.get(url)
             self.assertTrue('<img class="card-img"' in str(response.content),
